@@ -5,9 +5,11 @@ edition = "2021"
 build = "build.rs"
 
 [dependencies]
-log = "0.4.2"
-prost = "0.13.4"
-prost-types = "0.13.4"
+log = "0.4"
+prost = "0.11"
+prost-derive = "0.11"
+threadpool = "1.8"
+
 
 [build-dependencies]
 prost-build = "0.13.4"

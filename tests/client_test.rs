@@ -1,7 +1,5 @@
-use embedded_recruitment_task::{
-    message::{client_message, server_message, AddRequest, EchoMessage},
-    server::Server,
-};
+use embedded_recruitment_task::message::{client_message, server_message, AddRequest, EchoMessage};
+use embedded_recruitment_task::server::Server;
 use std::{
     sync::Arc,
     thread::{self, JoinHandle},
@@ -9,59 +7,64 @@ use std::{
 
 mod client;
 
-fn setup_server_thread(server: Arc<Server>) -> JoinHandle<()> {
-    thread::spawn(move || {
-        server.run().expect("Server encountered an error");
-    })
+struct ServerHandle {
+    server: Arc<Server>,
+    handle: JoinHandle<()>,
 }
 
-fn create_server() -> Arc<Server> {
-    Arc::new(Server::new("localhost:8080").expect("Failed to start server"))
+impl ServerHandle {
+    fn new(server: Arc<Server>, handle: JoinHandle<()>) -> Self {
+        ServerHandle { server, handle }
+    }
+
+    fn stop(self) {
+        self.server.stop();
+        self.handle.join().expect("Server thread panicked");
+    }
+}
+
+fn setup_server_thread(server: Arc<Server>) -> ServerHandle {
+    let server_clone = Arc::clone(&server); // Clone the Arc
+    let handle = thread::spawn(move || {
+        server_clone.run().expect("Server encountered an error");
+    });
+    ServerHandle::new(server, handle) // Use the original server here
+}
+
+fn create_server(port: u16) -> Arc<Server> {
+    Arc::new(Server::new(&format!("localhost:{}", port)).expect("Failed to start server"))
 }
 
 #[test]
 fn test_client_connection() {
-    // Set up the server in a separate thread
-    let server = create_server();
-    let handle = setup_server_thread(server.clone());
+    let server = create_server(8081); // Unique port for this test
+    let server_handle = setup_server_thread(server.clone());
 
-    // Create and connect the client
-    let mut client = client::Client::new("localhost", 8080, 1000);
+    let mut client = client::Client::new("localhost", 8081, 1000);
     assert!(client.connect().is_ok(), "Failed to connect to the server");
 
-    // Disconnect the client
     assert!(
         client.disconnect().is_ok(),
         "Failed to disconnect from the server"
     );
 
-    // Stop the server and wait for thread to finish
-    server.stop();
-    assert!(
-        handle.join().is_ok(),
-        "Server thread panicked or failed to join"
-    );
+    server_handle.stop();
 }
 
 #[test]
 fn test_client_echo_message() {
-    // Set up the server in a separate thread
-    let server = create_server();
-    let handle = setup_server_thread(server.clone());
+    let server = create_server(8082); // Unique port for this test
+    let server_handle = setup_server_thread(server.clone());
 
-    // Create and connect the client
-    let mut client = client::Client::new("localhost", 8080, 1000);
+    let mut client = client::Client::new("localhost", 8082, 1000);
     assert!(client.connect().is_ok(), "Failed to connect to the server");
 
-    // Prepare the message
     let mut echo_message = EchoMessage::default();
     echo_message.content = "Hello, World!".to_string();
     let message = client_message::Message::EchoMessage(echo_message.clone());
 
-    // Send the message to the server
     assert!(client.send(message).is_ok(), "Failed to send message");
 
-    // Receive the echoed message
     let response = client.receive();
     assert!(
         response.is_ok(),
@@ -78,48 +81,35 @@ fn test_client_echo_message() {
         _ => panic!("Expected EchoMessage, but received a different message"),
     }
 
-    // Disconnect the client
     assert!(
         client.disconnect().is_ok(),
         "Failed to disconnect from the server"
     );
 
-    // Stop the server and wait for thread to finish
-    server.stop();
-    assert!(
-        handle.join().is_ok(),
-        "Server thread panicked or failed to join"
-    );
+    server_handle.stop();
 }
 
 #[test]
-#[ignore = "please remove ignore and fix this test"]
 fn test_multiple_echo_messages() {
-    // Set up the server in a separate thread
-    let server = create_server();
-    let handle = setup_server_thread(server.clone());
+    let server = create_server(8083); // Unique port for this test
+    let server_handle = setup_server_thread(server.clone());
 
-    // Create and connect the client
-    let mut client = client::Client::new("localhost", 8080, 1000);
+    let mut client = client::Client::new("localhost", 8083, 1000);
     assert!(client.connect().is_ok(), "Failed to connect to the server");
 
-    // Prepare multiple messages
     let messages = vec![
         "Hello, World!".to_string(),
         "How are you?".to_string(),
         "Goodbye!".to_string(),
     ];
 
-    // Send and receive multiple messages
     for message_content in messages {
         let mut echo_message = EchoMessage::default();
         echo_message.content = message_content.clone();
         let message = client_message::Message::EchoMessage(echo_message);
 
-        // Send the message to the server
         assert!(client.send(message).is_ok(), "Failed to send message");
 
-        // Receive the echoed message
         let response = client.receive();
         assert!(
             response.is_ok(),
@@ -137,59 +127,46 @@ fn test_multiple_echo_messages() {
         }
     }
 
-    // Disconnect the client
     assert!(
         client.disconnect().is_ok(),
         "Failed to disconnect from the server"
     );
 
-    // Stop the server and wait for thread to finish
-    server.stop();
-    assert!(
-        handle.join().is_ok(),
-        "Server thread panicked or failed to join"
-    );
+    server_handle.stop();
 }
 
 #[test]
-#[ignore = "please remove ignore and fix this test"]
 fn test_multiple_clients() {
-    // Set up the server in a separate thread
-    let server = create_server();
-    let handle = setup_server_thread(server.clone());
+    let server = create_server(8084); // Unique port for this test
+    let server_handle = setup_server_thread(server.clone());
 
-    // Create and connect multiple clients
-    let mut clients = vec![
-        client::Client::new("localhost", 8080, 1000),
-        client::Client::new("localhost", 8080, 1000),
-        client::Client::new("localhost", 8080, 1000),
+    let mut clients: Vec<client::Client> = vec![
+        client::Client::new("localhost", 8084, 1000),
+        client::Client::new("localhost", 8084, 1000),
+        client::Client::new("localhost", 8084, 1000),
     ];
 
     for client in clients.iter_mut() {
         assert!(client.connect().is_ok(), "Failed to connect to the server");
     }
 
-    // Prepare multiple messages
     let messages = vec![
         "Hello, World!".to_string(),
         "How are you?".to_string(),
         "Goodbye!".to_string(),
     ];
 
-    // Send and receive multiple messages for each client
     for message_content in messages {
         let mut echo_message = EchoMessage::default();
         echo_message.content = message_content.clone();
         let message = client_message::Message::EchoMessage(echo_message.clone());
 
         for client in clients.iter_mut() {
-            // Send the message to the server
             assert!(
                 client.send(message.clone()).is_ok(),
                 "Failed to send message"
             );
 
-            // Receive the echoed message
             let response = client.receive();
             assert!(
                 response.is_ok(),
@@ -208,7 +185,6 @@ fn test_multiple_clients() {
         }
     }
 
-    // Disconnect the clients
     for client in clients.iter_mut() {
         assert!(
             client.disconnect().is_ok(),
@@ -216,35 +192,24 @@ fn test_multiple_clients() {
         );
     }
 
-    // Stop the server and wait for thread to finish
-    server.stop();
-    assert!(
-        handle.join().is_ok(),
-        "Server thread panicked or failed to join"
-    );
+    server_handle.stop();
 }
 
 #[test]
-#[ignore = "please remove ignore and fix this test"]
 fn test_client_add_request() {
-    // Set up the server in a separate thread
-    let server = create_server();
-    let handle = setup_server_thread(server.clone());
+    let server = create_server(8085); // Unique port for this test
+    let server_handle = setup_server_thread(server.clone());
 
-    // Create and connect the client
-    let mut client = client::Client::new("localhost", 8080, 1000);
+    let mut client = client::Client::new("localhost", 8085, 1000);
     assert!(client.connect().is_ok(), "Failed to connect to the server");
 
-    // Prepare the message
     let mut add_request = AddRequest::default();
     add_request.a = 10;
     add_request.b = 20;
     let message = client_message::Message::AddRequest(add_request.clone());
 
-    // Send the message to the server
     assert!(client.send(message).is_ok(), "Failed to send message");
 
-    // Receive the response
     let response = client.receive();
     assert!(
         response.is_ok(),
@@ -262,16 +227,10 @@ fn test_client_add_request() {
         _ => panic!("Expected AddResponse, but received a different message"),
     }
 
-    // Disconnect the client
     assert!(
         client.disconnect().is_ok(),
         "Failed to disconnect from the server"
     );
 
-    // Stop the server and wait for thread to finish
-    server.stop();
-    assert!(
-        handle.join().is_ok(),
-        "Server thread panicked or failed to join"
-    );
+    server_handle.stop();
 }
